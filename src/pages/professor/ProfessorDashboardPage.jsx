@@ -1,239 +1,151 @@
 /**
- * Manages all assignments for a specific course in the professor’s dashboard.
- * Allows creation, editing, deletion, and review of assignments, while displaying
- * submission progress analytics for both individual and group submissions.
+ * Displays a professor's personalized dashboard with a summary of teaching activity,
+ * including active courses, total students, and assignments, using state from DataContext.
  */
 
-import { useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import {
-	mockCourses,
-	mockAcknowledgments,
-	mockGroups,
-} from "../../data/mockData";
-
+import { useMemo } from "react";
+import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
-import CreateAssignmentModal from "../../components/professor/CreateAssignmentModal";
-import SubmissionReviewModal from "../../components/professor/SubmissionReviewModal";
-import AssignmentCard from "../../components/common/AssignmentCard";
+import CourseCard from "../../components/common/CourseCard";
 
-import { PlusCircle, ArrowLeftIcon, ClipboardListIcon } from "lucide-react";
+import {
+	LibraryIcon,
+	UsersRoundIcon,
+	BookOpenIcon,
+	ClipboardListIcon,
+} from "lucide-react";
 
-const AssignmentManagementPage = () => {
-	const { courseId } = useParams();
-	const { assignments, createOrUpdateAssignment, deleteAssignment } =
-		useData();
+const ProfessorDashboardPage = () => {
+	const { user } = useAuth();
+	const { getUserCourses, assignments, mockCourses } = useData();
 
-	// Retrieve course details using the ID from route params
-	const course = mockCourses.find((c) => c.id === courseId);
+	const professorCourses = getUserCourses;
 
-	// Modal and editing states
-	const [isModalOpen, setIsModalOpen] = useState(false);
-	const [editingAssignment, setEditingAssignment] = useState(null);
-	const [reviewModalState, setReviewModalState] = useState({
-		isOpen: false,
-		assignmentId: null,
-		submissionType: null,
-	});
+	// Extract all course IDs for data lookups
+	const courseIds = useMemo(
+		() => professorCourses.map((c) => c.id),
+		[professorCourses]
+	);
 
-	// Compute enriched assignment data with submission analytics
-	const courseAssignments = useMemo(() => {
-		const studentIdsInCourse = course?.studentIds || [];
-		const courseGroups = mockGroups.filter((g) => g.courseId === courseId);
-
-		const enrichedAssignments = assignments
-			.filter((a) => a.courseId === courseId)
-			.map((assignment) => {
-				let totalSubmittable = 0;
-				let submittedCount = 0;
-
-				// Handle individual vs group submission logic
-				if (assignment.submissionType === "Individual") {
-					totalSubmittable = studentIdsInCourse.length;
-					submittedCount = mockAcknowledgments.filter(
-						(ack) =>
-							ack.assignmentId === assignment.id &&
-							studentIdsInCourse.includes(ack.submitterId)
-					).length;
-				} else {
-					totalSubmittable = courseGroups.length;
-					submittedCount = mockAcknowledgments.filter(
-						(ack) =>
-							ack.assignmentId === assignment.id &&
-							courseGroups.some((g) => g.id === ack.submitterId)
-					).length;
-				}
-
-				const percentage =
-					totalSubmittable > 0
-						? (submittedCount / totalSubmittable) * 100
-						: 0;
-
-				return {
-					...assignment,
-					totalSubmittable,
-					submittedCount,
-					submissionPercentage: Math.round(percentage),
-				};
-			});
-
-		// Sort newest assignments first
-		return enrichedAssignments.sort(
-			(a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-		);
-	}, [courseId, course, assignments]);
-
-	// Modal handlers
-	const handleCreateAssignment = () => {
-		setEditingAssignment(null);
-		setIsModalOpen(true);
-	};
-
-	const handleEditAssignment = (assignment) => {
-		setEditingAssignment(assignment);
-		setIsModalOpen(true);
-	};
-
-	const handleSaveAssignment = (assignmentData) => {
-		createOrUpdateAssignment(assignmentData);
-		setIsModalOpen(false);
-	};
-
-	const handleDeleteAssignment = (assignmentId) => {
-		if (
-			window.confirm("Are you sure you want to delete this assignment?")
-		) {
-			deleteAssignment(assignmentId);
-		}
-	};
-
-	// Review modal control
-	const handleOpenReview = (assignment) => {
-		setReviewModalState({
-			isOpen: true,
-			assignmentId: assignment.id,
-			submissionType: assignment.submissionType,
+	// Calculate total unique students across professor's courses
+	const totalEnrolledStudents = useMemo(() => {
+		const uniqueStudentIds = new Set();
+		professorCourses.forEach((course) => {
+			course.studentIds.forEach((id) => uniqueStudentIds.add(id));
 		});
-	};
+		return uniqueStudentIds.size;
+	}, [professorCourses]);
 
-	const handleCloseReview = () => {
-		setReviewModalState({
-			isOpen: false,
-			assignmentId: null,
-			submissionType: null,
-		});
-	};
-
-	// Helper for retrieving analytics data for the AssignmentCard
-	const getAnalyticsForAssignment = (assignment) => {
-		const enhanced = courseAssignments.find((a) => a.id === assignment.id);
-		if (!enhanced)
-			return { submittedCount: 0, totalSubmittable: 0, percentage: 0 };
-		return {
-			submittedCount: enhanced.submittedCount,
-			totalSubmittable: enhanced.totalSubmittable,
-			percentage: enhanced.submissionPercentage,
-		};
-	};
-
-	// If no matching course found, show fallback message
-	if (!course) {
-		return (
-			<div className="text-center p-10 text-error font-bold">
-				Course Not Found.
-			</div>
-		);
-	}
+	// Count total assignments linked to the professor's courses
+	const totalAssignments = useMemo(() => {
+		return assignments.filter((assignment) =>
+			courseIds.includes(assignment.courseId)
+		).length;
+	}, [courseIds, assignments]);
 
 	return (
 		<div className="min-h-screen p-4 sm:p-8">
 			<div className="max-w-7xl mx-auto space-y-8 pt-20 sm:pt-12">
-				{/* Header Section */}
+				{/* Dashboard Header */}
 				<header className="p-6 sm:p-8 backdrop-blur-sm rounded-2xl shadow-xl border border-base-content/25">
-					<div className="flex items-start justify-between">
-						<div className="flex items-start space-x-4">
-							<Link
-								to="/professor/dashboard"
-								className="btn btn-ghost btn-circle btn-lg text-primary tooltip tooltip-bottom"
-								data-tip="Go Back to Dashboard"
-							>
-								<ArrowLeftIcon className="size-8" />
-							</Link>
-							<div>
-								<h1 className="text-3xl sm:text-4xl font-extrabold text-primary mb-2">
-									{course.name}
-								</h1>
-								<p className="badge badge-outline badge-sm sm:badge-lg text-primary border-primary/50 font-medium tracking-wide">
-									Course ID: {course.id}
-								</p>
-							</div>
-						</div>
+					<div className="flex items-center space-x-4 mb-2">
+						<LibraryIcon className="size-8 sm:size-10 text-primary" />
+						<h1 className="text-3xl sm:text-4xl font-extrabold text-primary">
+							Welcome, {user?.name}!
+						</h1>
 					</div>
+					<p className="text-base-content/70 text-sm sm:text-lg ml-12 sm:ml-14">
+						Ready to review submissions? Today is{" "}
+						<span className="font-semibold text-base-content">
+							{new Date().toLocaleDateString("en-US", {
+								weekday: "long",
+								year: "numeric",
+								month: "long",
+								day: "numeric",
+							})}
+						</span>
+						.
+					</p>
 				</header>
 
-				{/* Assignment Management Section */}
-				<div className="space-y-8">
-					<div className="flex flex-col sm:flex-row justify-between items-center pb-2 border-b border-base-content/25">
-						<h2 className="text-2xl sm:text-3xl font-bold sm:pb-2 text-primary flex items-center">
-							<ClipboardListIcon className="size-7 mr-3" /> My
-							Assignment List
-						</h2>
-						<button
-							onClick={handleCreateAssignment}
-							className="btn btn-primary w-full sm:w-auto font-semibold m-4 sm:m-0"
-						>
-							<PlusCircle className="size-5" /> Create New
-							Assignment
-						</button>
+				{/* Summary Statistics Section */}
+				<div className="stats stats-vertical md:stats-horizontal shadow w-full rounded-2xl border border-base-content/25 bg-base-100">
+					{/* Active Courses Stat */}
+					<div className="stat p-4 sm:p-6">
+						<div className="stat-figure text-primary">
+							<BookOpenIcon className="size-6 sm:size-8" />
+						</div>
+						<div className="stat-title font-semibold text-base sm:text-lg">
+							Active Courses
+						</div>
+						<div className="stat-value text-3xl sm:text-4xl">
+							{professorCourses.length}
+						</div>
+						<div className="stat-desc text-base-content/50">
+							Courses you are currently teaching
+						</div>
 					</div>
 
-					{/* Assignment List Display */}
-					<div className="space-y-6">
-						{courseAssignments.length === 0 ? (
-							<div className="text-center p-10 bg-base-100 rounded-xl shadow-lg border border-base-content/25 text-base-content/70">
-								<span className="text-lg">
-									You have not created any assignments yet.
-									Click{" "}
-									<p className="font-bold">
-										Create New Assignment
-									</p>{" "}
-									to publish your first task!
-								</span>
-							</div>
-						) : (
-							courseAssignments.map((assignment) => (
-								<AssignmentCard
-									key={assignment.id}
-									assignment={assignment}
-									role="professor"
-									analytics={getAnalyticsForAssignment(
-										assignment
-									)}
-									onEdit={handleEditAssignment}
-									onDelete={handleDeleteAssignment}
-									onReview={handleOpenReview}
-								/>
-							))
-						)}
+					{/* Total Students Stat */}
+					<div className="stat p-4 sm:p-6">
+						<div className="stat-figure text-warning">
+							<UsersRoundIcon className="size-6 sm:size-8" />
+						</div>
+						<div className="stat-title font-semibold text-base sm:text-lg">
+							Total Students
+						</div>
+						<div className="stat-value text-3xl sm:text-4xl">
+							{totalEnrolledStudents}
+						</div>
+						<div className="stat-desc text-base-content/50">
+							Unique students across your courses
+						</div>
 					</div>
 
-					{/* Modals */}
-					<CreateAssignmentModal
-						isOpen={isModalOpen}
-						onClose={() => setIsModalOpen(false)}
-						onSave={handleSaveAssignment}
-						initialData={editingAssignment}
-						courseId={courseId}
-					/>
-					<SubmissionReviewModal
-						modalState={reviewModalState}
-						handleCloseModal={handleCloseReview}
-						courseId={courseId}
-					/>
+					{/* Total Assignments Stat */}
+					<div className="stat p-4 sm:p-6">
+						<div className="stat-figure text-success">
+							<ClipboardListIcon className="size-6 sm:size-8" />
+						</div>
+						<div className="stat-title font-semibold text-base sm:text-lg">
+							Course Assignments
+						</div>
+						<div className="stat-value text-3xl sm:text-4xl">
+							{totalAssignments}
+						</div>
+						<div className="stat-desc text-base-content/50">
+							Assignments across all your active courses
+						</div>
+					</div>
 				</div>
+
+				{/* Course Listing */}
+				<h2 className="text-2xl sm:text-3xl font-bold border-b border-base-content/25 pb-2 text-primary flex items-center">
+					<ClipboardListIcon className="size-7 mr-3" />
+					Your Active Courses
+				</h2>
+
+				{professorCourses.length > 0 ? (
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+						{professorCourses.map((course) => (
+							<CourseCard
+								key={course.id}
+								course={course}
+								role="Professor"
+							/>
+						))}
+					</div>
+				) : (
+					<div className="text-center p-12 border-2 border-dashed rounded-xl border-base-content/20">
+						<p className="text-lg">
+							You are not currently teaching any courses this
+							semester.
+						</p>
+					</div>
+				)}
 			</div>
 		</div>
 	);
 };
 
-export default AssignmentManagementPage;
+export default ProfessorDashboardPage;
