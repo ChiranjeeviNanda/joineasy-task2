@@ -1,17 +1,12 @@
 /**
  * Displays a student's personalized dashboard with a summary of academic progress,
  * including total assignments, completed tasks, pending work, and enrolled courses.
- * Calculates progress dynamically across courses.
+ * Calculates progress dynamically across courses using DataContext state.
  */
 
 import { useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import {
-	mockCourses,
-	mockAssignments,
-	mockAcknowledgments,
-	mockGroups,
-} from "../../data/mockData";
+import { useData } from "../../contexts/DataContext";
 import CourseCard from "../../components/common/CourseCard";
 
 import {
@@ -24,6 +19,7 @@ import {
 
 const StudentDashboardPage = () => {
 	const { user } = useAuth();
+	const { assignments, acknowledgments, groups, mockCourses } = useData();
 
 	// Filter courses where the current student is enrolled
 	const studentCourses = mockCourses.filter((course) =>
@@ -35,16 +31,16 @@ const StudentDashboardPage = () => {
 	 * Includes both individual and group submissions.
 	 */
 	const calculateCourseProgress = (courseId) => {
-		const assignments = mockAssignments.filter(
+		const courseAssignments = assignments.filter(
 			(a) => a.courseId === courseId
 		);
-		const totalAssignments = assignments.length;
+		const totalAssignments = courseAssignments.length;
 		if (totalAssignments === 0) return { total: 0, acknowledged: 0 };
 
 		let acknowledgedCount = 0;
 
-		assignments.forEach((assignment) => {
-			const isAcknowledged = mockAcknowledgments.some(
+		courseAssignments.forEach((assignment) => {
+			const isAcknowledged = acknowledgments.some(
 				(ack) =>
 					// Individual submission check
 					(assignment.submissionType === "Individual" &&
@@ -52,7 +48,7 @@ const StudentDashboardPage = () => {
 						ack.assignmentId === assignment.id) ||
 					// Group submission check
 					(assignment.submissionType === "Group" &&
-						mockGroups.some(
+						groups.some(
 							(group) =>
 								group.id === ack.submitterId &&
 								group.memberIds.includes(user.id)
@@ -96,7 +92,7 @@ const StudentDashboardPage = () => {
 			pendingAssignments: pending,
 			progressPercentage: percentage,
 		};
-	}, [studentCourses, user.id]);
+	}, [studentCourses, user.id, assignments, acknowledgments]);
 
 	/**
 	 * Helper for CourseCard badges — computes per-course completion percentage.
