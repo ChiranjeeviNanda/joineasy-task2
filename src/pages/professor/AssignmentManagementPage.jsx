@@ -1,44 +1,42 @@
+/**
+ * Manages all assignments for a specific course in the professor’s dashboard.
+ * Allows creation, editing, deletion, and review of assignments, while displaying
+ * submission progress analytics for both individual and group submissions.
+ */
+
 import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-// FIX: We import mock data directly to simulate backend data access
 import {
 	mockCourses,
-	// mockAssignments, // Removed unnecessary import
 	mockAcknowledgments,
 	mockGroups,
 } from "../../data/mockData";
 
-// Import the actual components we created
+import { useData } from "../../contexts/DataContext";
 import CreateAssignmentModal from "../../components/professor/CreateAssignmentModal";
-// REMOVED: import ProfessorAssignmentList from "../../components/professor/ProfessorAssignmentList";
-// NEW: Import the common card component
+import SubmissionReviewModal from "../../components/professor/SubmissionReviewModal";
 import AssignmentCard from "../../components/common/AssignmentCard";
 
-// Icons Imports
 import { PlusCircle, ArrowLeftIcon, ClipboardListIcon } from "lucide-react";
-import { useData } from "../../contexts/DataContext";
-import SubmissionReviewModal from "../../components/professor/SubmissionReviewModal";
 
 const AssignmentManagementPage = () => {
 	const { courseId } = useParams();
-	const {
-		assignments,
-		createOrUpdateAssignment, // <-- Renamed function
-		deleteAssignment,
-	} = useData();
-	// Using mockCourses as done in the original file
+	const { assignments, createOrUpdateAssignment, deleteAssignment } =
+		useData();
+
+	// Retrieve course details using the ID from route params
 	const course = mockCourses.find((c) => c.id === courseId);
 
-	/** Modal States */
+	// Modal and editing states
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingAssignment, setEditingAssignment] = useState(null);
 	const [reviewModalState, setReviewModalState] = useState({
 		isOpen: false,
 		assignmentId: null,
-		submissionType: null, // Track submission type for group/individual logic
+		submissionType: null,
 	});
 
-	/** Data Filtering and Enrichment - Calculation moved inside useMemo */
+	// Compute enriched assignment data with submission analytics
 	const courseAssignments = useMemo(() => {
 		const studentIdsInCourse = course?.studentIds || [];
 		const courseGroups = mockGroups.filter((g) => g.courseId === courseId);
@@ -49,18 +47,16 @@ const AssignmentManagementPage = () => {
 				let totalSubmittable = 0;
 				let submittedCount = 0;
 
+				// Handle individual vs group submission logic
 				if (assignment.submissionType === "Individual") {
 					totalSubmittable = studentIdsInCourse.length;
-
 					submittedCount = mockAcknowledgments.filter(
 						(ack) =>
 							ack.assignmentId === assignment.id &&
 							studentIdsInCourse.includes(ack.submitterId)
 					).length;
 				} else {
-					// Group Submission
 					totalSubmittable = courseGroups.length;
-
 					submittedCount = mockAcknowledgments.filter(
 						(ack) =>
 							ack.assignmentId === assignment.id &&
@@ -75,24 +71,19 @@ const AssignmentManagementPage = () => {
 
 				return {
 					...assignment,
-					totalSubmittable: totalSubmittable,
-					submittedCount: submittedCount,
+					totalSubmittable,
+					submittedCount,
 					submissionPercentage: Math.round(percentage),
 				};
 			});
 
-		// ⭐ NEW: Sort the assignments to display the newest ones first
-		// Assuming assignments have a 'createdAt' property that is a valid date string or Date object.
-		return enrichedAssignments.sort((a, b) => {
-			// Convert to Date objects for comparison
-			const dateA = new Date(a.createdAt);
-			const dateB = new Date(b.createdAt);
-			// Sort in descending order (newest first)
-			return dateB.getTime() - dateA.getTime();
-		});
+		// Sort newest assignments first
+		return enrichedAssignments.sort(
+			(a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+		);
 	}, [courseId, course, assignments]);
 
-	/** Modal Handlers & CRUD Stubs (Passing down to AssignmentCard) */
+	// Modal handlers
 	const handleCreateAssignment = () => {
 		setEditingAssignment(null);
 		setIsModalOpen(true);
@@ -103,6 +94,20 @@ const AssignmentManagementPage = () => {
 		setIsModalOpen(true);
 	};
 
+	const handleSaveAssignment = (assignmentData) => {
+		createOrUpdateAssignment(assignmentData);
+		setIsModalOpen(false);
+	};
+
+	const handleDeleteAssignment = (assignmentId) => {
+		if (
+			window.confirm("Are you sure you want to delete this assignment?")
+		) {
+			deleteAssignment(assignmentId);
+		}
+	};
+
+	// Review modal control
 	const handleOpenReview = (assignment) => {
 		setReviewModalState({
 			isOpen: true,
@@ -119,35 +124,19 @@ const AssignmentManagementPage = () => {
 		});
 	};
 
-	const handleSaveAssignment = (assignmentData) => {
-		createOrUpdateAssignment(assignmentData);
-		setIsModalOpen(false);
-	};
-
-	const handleDeleteAssignment = (assignmentId) => {
-		if (
-			window.confirm("Are you sure you want to delete this assignment?")
-		) {
-			deleteAssignment(assignmentId);
-		}
-	};
-
-	// Helper function to extract analytics for the Card component
+	// Helper for retrieving analytics data for the AssignmentCard
 	const getAnalyticsForAssignment = (assignment) => {
-		// Find the enhanced assignment data calculated in useMemo
-		const enhancedAssignment = courseAssignments.find(
-			(a) => a.id === assignment.id
-		);
-		if (!enhancedAssignment)
+		const enhanced = courseAssignments.find((a) => a.id === assignment.id);
+		if (!enhanced)
 			return { submittedCount: 0, totalSubmittable: 0, percentage: 0 };
-
 		return {
-			submittedCount: enhancedAssignment.submittedCount,
-			totalSubmittable: enhancedAssignment.totalSubmittable,
-			percentage: enhancedAssignment.submissionPercentage,
+			submittedCount: enhanced.submittedCount,
+			totalSubmittable: enhanced.totalSubmittable,
+			percentage: enhanced.submissionPercentage,
 		};
 	};
 
+	// If no matching course found, show fallback message
 	if (!course) {
 		return (
 			<div className="text-center p-10 text-error font-bold">
@@ -159,7 +148,7 @@ const AssignmentManagementPage = () => {
 	return (
 		<div className="min-h-screen p-4 sm:p-8">
 			<div className="max-w-7xl mx-auto space-y-8 pt-20 sm:pt-12">
-				{/* 1. Header and Back Button */}
+				{/* Header Section */}
 				<header className="p-6 sm:p-8 backdrop-blur-sm rounded-2xl shadow-xl border border-base-content/25">
 					<div className="flex items-start justify-between">
 						<div className="flex items-start space-x-4">
@@ -182,6 +171,7 @@ const AssignmentManagementPage = () => {
 					</div>
 				</header>
 
+				{/* Assignment Management Section */}
 				<div className="space-y-8">
 					<div className="flex flex-col sm:flex-row justify-between items-center pb-2 border-b border-base-content/25">
 						<h2 className="text-2xl sm:text-3xl font-bold sm:pb-2 text-primary flex items-center">
@@ -197,10 +187,8 @@ const AssignmentManagementPage = () => {
 						</button>
 					</div>
 
-					{/* 3. Assignment List (Now using AssignmentCard and map) */}
+					{/* Assignment List Display */}
 					<div className="space-y-6">
-						{" "}
-						{/* Matches the outer div of the old ProfessorAssignmentList */}
 						{courseAssignments.length === 0 ? (
 							<div className="text-center p-10 bg-base-100 rounded-xl shadow-lg border border-base-content/25 text-base-content/70">
 								<span className="text-lg">
@@ -209,7 +197,7 @@ const AssignmentManagementPage = () => {
 									<p className="font-bold">
 										Create New Assignment
 									</p>{" "}
-									above to publish your first task!
+									to publish your first task!
 								</span>
 							</div>
 						) : (
@@ -228,7 +216,8 @@ const AssignmentManagementPage = () => {
 							))
 						)}
 					</div>
-					{/* 4. Modal Layer */}
+
+					{/* Modals */}
 					<CreateAssignmentModal
 						isOpen={isModalOpen}
 						onClose={() => setIsModalOpen(false)}
