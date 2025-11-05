@@ -200,7 +200,7 @@ const StudentDashboardPage = () => {
 								<div key={course.id} className="relative">
 									{/* Per-course progress badge */}
 									<div
-										className={`badge badge-lg absolute top-4 right-4 z-10 ${
+										className={`badge badge-lg absolute top-4 right-4 z-10 font-bold ${
 											progress === 100
 												? "badge-success"
 												: "badge-primary"
